@@ -1,0 +1,8 @@
+.env
+.env.*
+!.env.example
+
+vendor/
+.DS_Store
+*.swp
+*.swo
