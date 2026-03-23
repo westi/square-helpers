@@ -3,6 +3,7 @@
 !.env.example
 
 vendor/
+reports/
 .DS_Store
 *.swp
 *.swo
