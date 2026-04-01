@@ -25,6 +25,12 @@ For DVDs, the report supports both `SQUARE_DVD_VARIATION_IDS` and optional `SQUA
 ### Quick start
 
 ```bash
+./run_cast_souvenir_vip_reports.sh
+```
+
+Or individually:
+
+```bash
 php report_cast_party_sales.php
 php report_souvenir_program_sales.php
 php report_vip_bag_sales.php
@@ -50,7 +56,7 @@ By default each script writes a CSV to `./reports/`:
 ### CSV columns
 
 - Cast Party / Souvenir / VIP:
-  - `full_name,email,phone,quantity`
+  - `first_name,last_name,quantity,order_links` (Square dashboard URLs per purchaser; multiple orders are semicolon-separated in the cell)
 - DVD:
   - `full_name,email,phone,dvd_single_qty,dvd_bundle_qty,quantity,address_line_1,address_line_2,locality,administrative_district_level_1,postal_code,country,address_source`
 

@@ -535,6 +535,18 @@ function order_url(string $base, string $orderId): string
     return $base . '/' . $orderId;
 }
 
+function order_links_cell(array $orderIds, string $orderUrlBase): string
+{
+    $parts = [];
+    foreach ($orderIds as $oid) {
+        $oid = trim((string) $oid);
+        if ($oid !== '') {
+            $parts[] = order_url($orderUrlBase, $oid);
+        }
+    }
+    return implode('; ', $parts);
+}
+
 function parse_and_merge_item_summaries(array $productNameOrIdStrings): array
 {
     $merged = [];
@@ -849,10 +861,13 @@ function aggregate_rows_by_customer(array $rows, bool $includeAddress): array
 
         if (!isset($out[$key])) {
             $out[$key] = [
+                'first_name' => trim($row['first_name'] ?? ''),
+                'last_name' => trim($row['last_name'] ?? ''),
                 'full_name' => $name,
                 'email' => $email,
                 'phone' => $phone,
                 'quantity' => 0,
+                'order_ids' => [],
             ];
             if ($includeAddress) {
                 $out[$key]['address_line_1'] = $row['address_line_1'] ?? '';
@@ -874,6 +889,10 @@ function aggregate_rows_by_customer(array $rows, bool $includeAddress): array
         }
 
         $out[$key]['quantity'] += $quantity;
+        $orderId = trim((string) ($row['order_id'] ?? ''));
+        if ($orderId !== '' && !in_array($orderId, $out[$key]['order_ids'], true)) {
+            $out[$key]['order_ids'][] = $orderId;
+        }
     }
     $aggregated = array_values($out);
     debug_log('rows_aggregated_by_customer', [
@@ -940,6 +959,7 @@ function run_simple_season_report(
         echo "  SQUARE_ACCESS_TOKEN (required)\n";
         echo "  SQUARE_LOCATION_ID (required unless --location-id)\n";
         echo "  " . $productEnvVar . " (required, comma-separated variation IDs)\n";
+        echo "  SQUARE_ORDER_URL_BASE (optional; prefix for order links in CSV, default production or sandbox dashboard)\n";
         echo "\n";
         echo "Debug:\n";
         echo "  --debug  Print redacted Square API request/response logs to STDERR\n";
@@ -986,11 +1006,37 @@ function run_simple_season_report(
     }
 
     $rows = aggregate_rows_by_customer($rows, $includeAddress);
-    usort($rows, static function (array $a, array $b): int {
-        return strcmp(($a['full_name'] ?? '') . ($a['email'] ?? ''), ($b['full_name'] ?? '') . ($b['email'] ?? ''));
-    });
+    if ($includeAddress) {
+        usort($rows, static function (array $a, array $b): int {
+            return strcmp(($a['full_name'] ?? '') . ($a['email'] ?? ''), ($b['full_name'] ?? '') . ($b['email'] ?? ''));
+        });
+    } else {
+        usort($rows, static function (array $a, array $b): int {
+            $cmp = strcmp($a['last_name'] ?? '', $b['last_name'] ?? '');
+            if ($cmp !== 0) {
+                return $cmp;
+            }
+            return strcmp($a['first_name'] ?? '', $b['first_name'] ?? '');
+        });
+    }
 
-    $columns = ['full_name', 'email', 'phone', 'quantity'];
+    $orderUrlBase = getenv('SQUARE_ORDER_URL_BASE');
+    if ($orderUrlBase === false || $orderUrlBase === '') {
+        $orderUrlBase = $sandbox
+            ? 'https://squareupsandbox.com/dashboard/orders/overview'
+            : 'https://app.squareup.com/dashboard/orders/overview';
+    }
+    if (!$includeAddress) {
+        foreach ($rows as $i => $row) {
+            $ids = $row['order_ids'] ?? [];
+            $rows[$i]['order_links'] = order_links_cell(is_array($ids) ? $ids : [], $orderUrlBase);
+            unset($rows[$i]['order_ids']);
+        }
+    }
+
+    $columns = $includeAddress
+        ? ['full_name', 'email', 'phone', 'quantity']
+        : ['first_name', 'last_name', 'quantity', 'order_links'];
     if ($includeAddress) {
         $columns = array_merge($columns, [
             'address_line_1',
