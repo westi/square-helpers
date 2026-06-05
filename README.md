@@ -4,8 +4,9 @@ Scripts and utilities for Square API integration.
 
 ## Seasonal Sales Reports
 
-These scripts generate season-focused CSVs for the show period from **December 1 through March 31**.
-Season names use the year the season ends (example: `--season=2026` means Dec 2025 to Mar 2026).
+Cast Party, Souvenir Program, and VIP reports use **December 1 through March 31** of the season-ending year.
+The **DVD** report uses **December 1 through July 31** (sales can continue after the run).
+Season names use the year the season ends (example: `--season=2026` means sales from Dec 2025 into 2026, ending Mar 31 or Jul 31 depending on the report).
 
 ### Seasonal report setup
 
@@ -46,7 +47,7 @@ By default each script writes a CSV to `./reports/`:
 
 ### Seasonal options
 
-- `--season=YYYY` Override the ending year used for the Dec-Mar window.
+- `--season=YYYY` Override the ending year used for the date window (Dec–Mar for Cast/Souvenir/VIP; Dec–Jul for DVD).
 - `--location-id=ID1,ID2` Override `SQUARE_LOCATION_ID`.
 - `--sandbox` Use Square sandbox API.
 - `--stdout` Print CSV to stdout instead of writing `./reports/...`.

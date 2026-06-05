@@ -30,7 +30,7 @@ Usage:
   php suggest_report_variation_ids.php [--season=YYYY] [--location-id=ID1,ID2] [--sandbox] [--debug] [--json]
 
 Options:
-  --season=YYYY      Season ending year (Dec previous year through Mar this year)
+  --season=YYYY      Season ending year (Dec previous year through Jul 31 this year; matches DVD window)
   --location-id=IDS  Override SQUARE_LOCATION_ID (comma-separated)
   --sandbox          Use Square sandbox API
   --debug            Print Square API debug logs to STDERR
@@ -99,7 +99,7 @@ function main(): int
 
     $sandbox = (bool) $cli['sandbox'] || (getenv('SQUARE_SANDBOX') !== false && getenv('SQUARE_SANDBOX') !== '');
     $baseUrl = base_url_from_sandbox($sandbox);
-    [$startAt, $endAt] = season_window_rfc3339($seasonEndYear);
+    [$startAt, $endAt] = season_window_rfc3339($seasonEndYear, true);
 
     try {
         $orders = search_orders(

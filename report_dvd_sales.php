@@ -106,10 +106,10 @@ function main(): int
 
     $sandbox = $cli['sandbox'] || (getenv('SQUARE_SANDBOX') !== false && getenv('SQUARE_SANDBOX') !== '');
     $baseUrl = base_url_from_sandbox($sandbox);
-    [$startAt, $endAt] = season_window_rfc3339($season);
+    [$startAt, $endAt] = season_window_rfc3339($season, true);
 
     try {
-        $orders = search_orders($baseUrl, $token, $locationIds, $startAt, $endAt, ['states' => ['COMPLETED']]);
+        $orders = search_orders($baseUrl, $token, $locationIds, $startAt, $endAt, ['states' => ['OPEN', 'COMPLETED']]);
         $orders = orders_containing_products($orders, $allDvdIds);
 
         $customerMap = [];

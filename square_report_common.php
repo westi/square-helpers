@@ -718,11 +718,14 @@ function auto_season_end_year(?DateTimeImmutable $now = null): int
     return $year + 1;
 }
 
-function season_window_rfc3339(int $seasonEndYear): array
+/** @param $throughEndOfJuly false: through Mar 31 (Cast/Souvenir/VIP); true: through Jul 31 (DVD, variation-ID suggest). */
+function season_window_rfc3339(int $seasonEndYear, bool $throughEndOfJuly = false): array
 {
     $startYear = $seasonEndYear - 1;
     $start = sprintf('%04d-12-01T00:00:00Z', $startYear);
-    $end = sprintf('%04d-03-31T23:59:59Z', $seasonEndYear);
+    $end = $throughEndOfJuly
+        ? sprintf('%04d-07-31T23:59:59Z', $seasonEndYear)
+        : sprintf('%04d-03-31T23:59:59Z', $seasonEndYear);
     return [$start, $end];
 }
 
