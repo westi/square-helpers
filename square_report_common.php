@@ -147,8 +147,12 @@ function square_request(string $baseUrl, string $accessToken, string $method, st
             throw new RuntimeException('Square API request failed: ' . ($err['message'] ?? 'unknown error'));
         }
 
+        $responseHeaders = function_exists('http_get_last_response_headers')
+            ? (http_get_last_response_headers() ?? [])
+            : ($http_response_header ?? []);
+
         $code = 0;
-        if (!empty($http_response_header[0]) && preg_match('/HTTP\/\d\.\d\s+(\d{3})/', $http_response_header[0], $m)) {
+        if (!empty($responseHeaders[0]) && preg_match('/HTTP\/\d\.\d\s+(\d{3})/', $responseHeaders[0], $m)) {
             $code = (int) $m[1];
         }
 
