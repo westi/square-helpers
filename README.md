@@ -59,7 +59,7 @@ By default each script writes a CSV to `./reports/`:
 - Cast Party / Souvenir / VIP:
   - `first_name,last_name,quantity,order_links` (Square dashboard URLs per purchaser; multiple orders are semicolon-separated in the cell)
 - DVD:
-  - `full_name,email,phone,dvd_single_qty,dvd_bundle_qty,quantity,address_line_1,address_line_2,locality,administrative_district_level_1,postal_code,country,address_source`
+  - `full_name,email,phone,dvd_single_qty,dvd_bundle_qty,quantity,address_line_1,address_line_2,locality,administrative_district_level_1,postal_code,country,address_source,order_links` (Square dashboard URLs per purchaser; multiple orders are semicolon-separated in the cell)
 
 DVD mailing address preference is:
 1) order shipping recipient address, then

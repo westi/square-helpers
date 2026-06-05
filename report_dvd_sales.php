@@ -77,6 +77,7 @@ function main(): int
         echo "  SQUARE_LOCATION_ID (required unless --location-id)\n";
         echo "  SQUARE_DVD_VARIATION_IDS (required, comma-separated)\n";
         echo "  SQUARE_DVD_BUNDLE_VARIATION_IDS (optional, comma-separated)\n";
+        echo "  SQUARE_ORDER_URL_BASE (optional; prefix for order_links in CSV, default production or sandbox dashboard)\n";
         return 0;
     }
 
@@ -151,6 +152,7 @@ function main(): int
                 'postal_code' => $row['postal_code'] ?? '',
                 'country' => $row['country'] ?? '',
                 'address_source' => $row['address_source'] ?? 'none',
+                'order_ids' => [],
             ];
         } elseif (($aggregated[$key]['address_source'] ?? 'none') !== 'order_shipping' && (($row['address_source'] ?? 'none') === 'order_shipping')) {
             $aggregated[$key]['address_line_1'] = $row['address_line_1'] ?? '';
@@ -165,6 +167,22 @@ function main(): int
         $aggregated[$key]['dvd_single_qty'] += (int) $q['dvd_single_qty'];
         $aggregated[$key]['dvd_bundle_qty'] += (int) $q['dvd_bundle_qty'];
         $aggregated[$key]['quantity'] += (int) $row['quantity'];
+        $orderId = trim((string) ($row['order_id'] ?? ''));
+        if ($orderId !== '' && !in_array($orderId, $aggregated[$key]['order_ids'], true)) {
+            $aggregated[$key]['order_ids'][] = $orderId;
+        }
+    }
+
+    $orderUrlBase = getenv('SQUARE_ORDER_URL_BASE');
+    if ($orderUrlBase === false || $orderUrlBase === '') {
+        $orderUrlBase = $sandbox
+            ? 'https://squareupsandbox.com/dashboard/orders/overview'
+            : 'https://app.squareup.com/dashboard/orders/overview';
+    }
+    foreach ($aggregated as $k => $agg) {
+        $ids = $agg['order_ids'] ?? [];
+        $aggregated[$k]['order_links'] = order_links_cell(is_array($ids) ? $ids : [], $orderUrlBase);
+        unset($aggregated[$k]['order_ids']);
     }
 
     $rowsOut = array_values($aggregated);
@@ -186,6 +204,7 @@ function main(): int
         'postal_code',
         'country',
         'address_source',
+        'order_links',
     ];
 
     if ($cli['stdout']) {
