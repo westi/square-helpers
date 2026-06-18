@@ -42,10 +42,10 @@ Environment:
   SQUARE_LOCATION_ID    Required unless --location-id
 
 What it does:
-  - Loads COMPLETED orders for the season
+  - Loads COMPLETED orders plus OPEN orders that Square reports as paid
   - Extracts line item catalog_object_id values actually seen in orders
   - Groups top IDs by keyword heuristics for:
-      CAST PARTY, SOUVENIR PROGRAM, VIP BAG, DVD
+      CAST PARTY, SOUVENIR PROGRAM, VIP BAG, DVD, SUMMER REUNION TICKET
   - Prints suggested .env lines
 
 HELP;
@@ -68,6 +68,9 @@ function item_keyword_group(string $name): ?string
     }
     if (strpos($n, 'dvd') !== false) {
         return 'dvd';
+    }
+    if (strpos($n, 'summer') !== false && strpos($n, 'reunion') !== false && strpos($n, 'ticket') !== false) {
+        return 'summer_reunion_ticket';
     }
     return null;
 }
@@ -100,6 +103,7 @@ function main(): int
     $sandbox = (bool) $cli['sandbox'] || (getenv('SQUARE_SANDBOX') !== false && getenv('SQUARE_SANDBOX') !== '');
     $baseUrl = base_url_from_sandbox($sandbox);
     [$startAt, $endAt] = season_window_rfc3339($seasonEndYear, true);
+    $orderStates = ['OPEN', 'COMPLETED'];
 
     try {
         $orders = search_orders(
@@ -108,8 +112,9 @@ function main(): int
             $locationIds,
             $startAt,
             $endAt,
-            ['states' => ['COMPLETED']]
+            ['states' => $orderStates]
         );
+        $orders = filter_reportable_paid_orders($baseUrl, $accessToken, $orders);
     } catch (Throwable $e) {
         fwrite(STDERR, "Error: " . $e->getMessage() . "\n");
         return 1;
@@ -162,6 +167,7 @@ function main(): int
         'souvenir_program' => [],
         'vip_bag' => [],
         'dvd' => [],
+        'summer_reunion_ticket' => [],
     ];
     foreach ($rows as $row) {
         $allNames = $row['names'];
@@ -182,6 +188,7 @@ function main(): int
         'SQUARE_SOUVENIR_PROGRAM_VARIATION_IDS' => implode(',', array_map(static fn(array $r): string => $r['catalog_object_id'], $groups['souvenir_program'])),
         'SQUARE_VIP_BAG_VARIATION_IDS' => implode(',', array_map(static fn(array $r): string => $r['catalog_object_id'], $groups['vip_bag'])),
         'SQUARE_DVD_VARIATION_IDS' => implode(',', array_map(static fn(array $r): string => $r['catalog_object_id'], $groups['dvd'])),
+        'SQUARE_SUMMER_REUNION_TICKET_VARIATION_IDS' => implode(',', array_map(static fn(array $r): string => $r['catalog_object_id'], $groups['summer_reunion_ticket'])),
     ];
 
     if ($cli['json']) {
@@ -189,6 +196,7 @@ function main(): int
             'season_end_year' => $seasonEndYear,
             'start_at' => $startAt,
             'end_at' => $endAt,
+            'order_states' => $orderStates,
             'total_orders' => count($orders),
             'distinct_variations' => count($rows),
             'variations' => $rows,
@@ -198,6 +206,7 @@ function main(): int
     }
 
     echo "Season window: " . $startAt . " .. " . $endAt . "\n";
+    echo "Order states scanned: " . implode(', ', $orderStates) . "\n";
     echo "Orders scanned: " . count($orders) . "\n";
     echo "Distinct sold variation IDs: " . count($rows) . "\n\n";
 
