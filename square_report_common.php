@@ -365,14 +365,19 @@ function get_matching_line_items(array $order, array $variationIds): array
     return $out;
 }
 
-function get_payment(string $baseUrl, string $accessToken, string $paymentId): ?array
+function retrieve_payment(string $baseUrl, string $accessToken, string $paymentId): ?array
 {
     if ($paymentId === '') {
         return null;
     }
+    $data = square_request($baseUrl, $accessToken, 'GET', '/v2/payments/' . $paymentId);
+    return $data['payment'] ?? null;
+}
+
+function get_payment(string $baseUrl, string $accessToken, string $paymentId): ?array
+{
     try {
-        $data = square_request($baseUrl, $accessToken, 'GET', '/v2/payments/' . $paymentId);
-        return $data['payment'] ?? null;
+        return retrieve_payment($baseUrl, $accessToken, $paymentId);
     } catch (Throwable $e) {
         return null;
     }
@@ -388,6 +393,70 @@ function get_payment_ids_from_order(array $order): array
         }
     }
     return $ids;
+}
+
+function money_amount(array $money): int
+{
+    return (int) ($money['amount'] ?? 0);
+}
+
+function completed_payment_net_amount(array $payment): int
+{
+    if (($payment['status'] ?? '') !== 'COMPLETED') {
+        return 0;
+    }
+    $amount = money_amount($payment['amount_money'] ?? []);
+    $refunded = money_amount($payment['refunded_money'] ?? []);
+    return max(0, $amount - $refunded);
+}
+
+function open_order_is_paid(string $baseUrl, string $accessToken, array $order): bool
+{
+    $totalAmount = money_amount($order['total_money'] ?? []);
+    $netDueAmount = money_amount($order['net_amount_due_money'] ?? []);
+    if ($netDueAmount > 0) {
+        return false;
+    }
+    if ($totalAmount <= 0) {
+        return true;
+    }
+
+    $paidAmount = 0;
+    foreach (get_payment_ids_from_order($order) as $paymentId) {
+        $payment = retrieve_payment($baseUrl, $accessToken, $paymentId);
+        if ($payment !== null) {
+            $paidAmount += completed_payment_net_amount($payment);
+        }
+    }
+    return $paidAmount >= $totalAmount;
+}
+
+function filter_reportable_paid_orders(string $baseUrl, string $accessToken, array $orders): array
+{
+    $out = [];
+    $filtered = [];
+    foreach ($orders as $order) {
+        $state = (string) ($order['state'] ?? '');
+        if ($state === 'COMPLETED') {
+            $out[] = $order;
+            continue;
+        }
+        if ($state === 'OPEN' && open_order_is_paid($baseUrl, $accessToken, $order)) {
+            $out[] = $order;
+            continue;
+        }
+        $filtered[] = [
+            'order_id' => $order['id'] ?? '',
+            'state' => $state,
+            'net_due' => $order['net_amount_due_money']['amount'] ?? null,
+        ];
+    }
+    debug_log('orders_paid_filter_result', [
+        'orders_in' => count($orders),
+        'orders_out' => count($out),
+        'filtered_out' => $filtered,
+    ]);
+    return $out;
 }
 
 function bulk_retrieve_customers(string $baseUrl, string $accessToken, array $customerIds): array
@@ -824,7 +893,8 @@ function fetch_orders_with_people(
     string $startAt,
     string $endAt,
     array $variationIds,
-    ?array $stateFilter
+    ?array $stateFilter,
+    bool $requirePaidOrders = false
 ): array {
     $orders = search_orders($baseUrl, $accessToken, $locationIds, $startAt, $endAt, $stateFilter);
     debug_log('orders_search_result', [
@@ -834,6 +904,9 @@ function fetch_orders_with_people(
         'state_filter' => $stateFilter,
     ]);
     $orders = orders_containing_products($orders, $variationIds);
+    if ($requirePaidOrders) {
+        $orders = filter_reportable_paid_orders($baseUrl, $accessToken, $orders);
+    }
 
     $customerMap = [];
     $customerIds = collect_customer_ids($orders);

@@ -112,6 +112,7 @@ function main(): int
     try {
         $orders = search_orders($baseUrl, $token, $locationIds, $startAt, $endAt, ['states' => ['OPEN', 'COMPLETED']]);
         $orders = orders_containing_products($orders, $allDvdIds);
+        $orders = filter_reportable_paid_orders($baseUrl, $token, $orders);
 
         $customerMap = [];
         $customerIds = collect_customer_ids($orders);
