@@ -319,6 +319,26 @@ function get_recipient_from_order(array $order): ?array
     return null;
 }
 
+function add_unique_note(array &$notes, $value): void
+{
+    $note = trim((string) ($value ?? ''));
+    if ($note !== '' && !in_array($note, $notes, true)) {
+        $notes[] = $note;
+    }
+}
+
+function order_note_cell(array $order): string
+{
+    $notes = [];
+    add_unique_note($notes, $order['note'] ?? '');
+    foreach (($order['fulfillments'] ?? []) as $fulfillment) {
+        add_unique_note($notes, $fulfillment['pickup_details']['note'] ?? '');
+        add_unique_note($notes, $fulfillment['delivery_details']['note'] ?? '');
+        add_unique_note($notes, $fulfillment['shipment_details']['note'] ?? '');
+    }
+    return implode('; ', $notes);
+}
+
 function get_shipment_address(array $order): ?array
 {
     foreach (($order['fulfillments'] ?? []) as $f) {
@@ -561,6 +581,7 @@ function build_rows(array $orders, array $variationIds, array $customerMap, arra
         $rows[] = array_merge([
             'order_id' => $orderId,
             'order_date' => $order['created_at'] ?? '',
+            'order_note' => order_note_cell($order),
             'customer_id' => $customerId,
             'first_name' => $firstName,
             'last_name' => $lastName,
@@ -928,9 +949,10 @@ function fetch_orders_with_people(
     return $rows;
 }
 
-function aggregate_rows_by_customer(array $rows, bool $includeAddress): array
+function aggregate_rows_by_customer(array $rows, bool $includeAddress, bool $includeOrderNote = false): array
 {
     $out = [];
+    $noteLists = [];
     foreach ($rows as $row) {
         $name = trim(trim($row['first_name'] ?? '') . ' ' . trim($row['last_name'] ?? ''));
         $email = trim((string) ($row['email'] ?? ''));
@@ -949,6 +971,10 @@ function aggregate_rows_by_customer(array $rows, bool $includeAddress): array
                 'quantity' => 0,
                 'order_ids' => [],
             ];
+            if ($includeOrderNote) {
+                $out[$key]['order_note'] = '';
+                $noteLists[$key] = [];
+            }
             if ($includeAddress) {
                 $out[$key]['address_line_1'] = $row['address_line_1'] ?? '';
                 $out[$key]['address_line_2'] = $row['address_line_2'] ?? '';
@@ -966,6 +992,14 @@ function aggregate_rows_by_customer(array $rows, bool $includeAddress): array
             $out[$key]['postal_code'] = $row['postal_code'] ?? '';
             $out[$key]['country'] = $row['country'] ?? '';
             $out[$key]['address_source'] = $row['address_source'] ?? 'none';
+        }
+
+        if ($includeOrderNote) {
+            $note = trim((string) ($row['order_note'] ?? ''));
+            if ($note !== '' && !in_array($note, $noteLists[$key] ?? [], true)) {
+                $noteLists[$key][] = $note;
+                $out[$key]['order_note'] = implode('; ', $noteLists[$key]);
+            }
         }
 
         $out[$key]['quantity'] += $quantity;
@@ -1026,15 +1060,26 @@ function run_simple_season_report(
     string $productEnvVar,
     string $outputSlug,
     bool $includeAddress,
-    string $reportLabel
+    string $reportLabel,
+    bool $throughEndOfJuly = false,
+    ?array $orderStates = null,
+    bool $includeOrderNote = false,
+    bool $includeContactInfo = false,
+    bool $requirePaidOrders = false
 ): int {
     load_env();
+    $orderStates = $orderStates ?? ['COMPLETED'];
     $opts = getopt('', ['season::', 'location-id:', 'sandbox', 'stdout', 'debug', 'help']);
     if (isset($opts['help'])) {
+        $dateWindowDescription = $throughEndOfJuly ? 'Dec 1 to Jul 31' : 'Dec 1 to Mar 31';
         echo "Usage:\n";
         echo "  php " . $scriptName . " [--season=YYYY] [--location-id=ID1,ID2] [--sandbox] [--stdout] [--debug]\n\n";
         echo "Report:\n";
-        echo "  " . $reportLabel . " (Dec 1 to Mar 31 show season, named by ending year)\n\n";
+        echo "  " . $reportLabel . " (" . $dateWindowDescription . " show season, named by ending year)\n";
+        echo "  Order states: " . implode(', ', $orderStates) . "\n\n";
+        if ($requirePaidOrders) {
+            echo "  OPEN orders must have no remaining net amount due and completed payments covering the order total.\n\n";
+        }
         echo "Environment:\n";
         echo "  SQUARE_ACCESS_TOKEN (required)\n";
         echo "  SQUARE_LOCATION_ID (required unless --location-id)\n";
@@ -1068,7 +1113,7 @@ function run_simple_season_report(
 
     $sandbox = isset($opts['sandbox']) || (getenv('SQUARE_SANDBOX') !== false && getenv('SQUARE_SANDBOX') !== '');
     $baseUrl = base_url_from_sandbox($sandbox);
-    [$startAt, $endAt] = season_window_rfc3339($season);
+    [$startAt, $endAt] = season_window_rfc3339($season, $throughEndOfJuly);
 
     try {
         $rows = fetch_orders_with_people(
@@ -1078,14 +1123,15 @@ function run_simple_season_report(
             $startAt,
             $endAt,
             $productIds,
-            ['states' => ['COMPLETED']]
+            ['states' => $orderStates],
+            $requirePaidOrders
         );
     } catch (Throwable $e) {
         fwrite(STDERR, "Error: " . $e->getMessage() . "\n");
         return 1;
     }
 
-    $rows = aggregate_rows_by_customer($rows, $includeAddress);
+    $rows = aggregate_rows_by_customer($rows, $includeAddress, $includeOrderNote);
     if ($includeAddress) {
         usort($rows, static function (array $a, array $b): int {
             return strcmp(($a['full_name'] ?? '') . ($a['email'] ?? ''), ($b['full_name'] ?? '') . ($b['email'] ?? ''));
@@ -1114,9 +1160,20 @@ function run_simple_season_report(
         }
     }
 
-    $columns = $includeAddress
-        ? ['full_name', 'email', 'phone', 'quantity']
-        : ['first_name', 'last_name', 'quantity', 'order_links'];
+    if ($includeAddress) {
+        $columns = ['full_name', 'email', 'phone', 'quantity'];
+    } else {
+        $columns = ['first_name', 'last_name'];
+        if ($includeContactInfo) {
+            $columns[] = 'email';
+            $columns[] = 'phone';
+        }
+        $columns[] = 'quantity';
+        if ($includeOrderNote) {
+            $columns[] = 'order_note';
+        }
+        $columns[] = 'order_links';
+    }
     if ($includeAddress) {
         $columns = array_merge($columns, [
             'address_line_1',

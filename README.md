@@ -18,6 +18,7 @@ Season names use the year the season ends (example: `--season=2026` means sales 
    - `SQUARE_SOUVENIR_PROGRAM_VARIATION_IDS`
    - `SQUARE_VIP_BAG_VARIATION_IDS`
    - `SQUARE_DVD_VARIATION_IDS`
+   - `SQUARE_SUMMER_REUNION_TICKET_VARIATION_IDS`
    - Optional: `SQUARE_DVD_BUNDLE_VARIATION_IDS`
 
 Each product variable accepts one or more Square variation IDs (comma-separated).
@@ -36,6 +37,7 @@ php report_cast_party_sales.php
 php report_souvenir_program_sales.php
 php report_vip_bag_sales.php
 php report_dvd_sales.php
+php report_summer_reunion_ticket_doorlist.php --season=2026
 ```
 
 By default each script writes a CSV to `./reports/`:
@@ -44,6 +46,7 @@ By default each script writes a CSV to `./reports/`:
 - `souvenir_program_sales_season_<YYYY>.csv`
 - `vip_bag_sales_season_<YYYY>.csv`
 - `dvd_sales_season_<YYYY>.csv`
+- `summer_reunion_ticket_doorlist_season_<YYYY>.csv`
 
 ### Seasonal options
 
@@ -54,10 +57,14 @@ By default each script writes a CSV to `./reports/`:
 - `--debug` Print redacted Square API request/response debug logs to STDERR.
 - `--help` Show usage.
 
+The Summer Reunion ticket doorlist uses the DVD-length season window, **December 1 through July 31**, and includes both `OPEN` and `COMPLETED` orders so new ticket orders appear before they are completed. `OPEN` orders are included only when Square reports no remaining net amount due and completed payments cover the order total.
+
 ### CSV columns
 
 - Cast Party / Souvenir / VIP:
   - `first_name,last_name,quantity,order_links` (Square dashboard URLs per purchaser; multiple orders are semicolon-separated in the cell)
+- Summer Reunion ticket doorlist:
+  - `first_name,last_name,email,phone,quantity,order_note,order_links` (`order_note` contains non-empty Square order and fulfillment notes per purchaser, de-duplicated and semicolon-separated)
 - DVD:
   - `full_name,email,phone,dvd_single_qty,dvd_bundle_qty,quantity,address_line_1,address_line_2,locality,administrative_district_level_1,postal_code,country,address_source,order_links` (Square dashboard URLs per purchaser; multiple orders are semicolon-separated in the cell)
 
